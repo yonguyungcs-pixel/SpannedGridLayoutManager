@@ -2,177 +2,124 @@
 
 # SpannedGridLayoutManager
 
-**SpannedGridLayouManager** is a layout manager that will resize and reorder views based on a provided `SpanSize`.
+**SpannedGridLayoutManager** is a `RecyclerView.LayoutManager` that resizes and reorders views based on a provided `SpanSize`.
 
-**IMPORTANT**: as the goal of this LayoutManager is to fill all gaps if possible, views may be placed in an order which may not be related to their positions. That is, if `View #9` can fill a gap before `View #8`, it will be placed in an previous position, ignoring the normal ordering.
+> Important: this layout manager tries to fill empty gaps whenever possible. As a result, the visual order of items may differ from their adapter order. For example, `View #9` may be placed before `View #8` when it can fill an earlier empty area.
 
 ![video](art/spannedgridlayout.gif)
 
+## 中文说明
+
+这是一个用于 Android `RecyclerView` 的跨格布局管理器，适合实现桌面卡片、仪表盘、宫格面板等场景。
+
+主要特性：
+
+- 支持横向和纵向滚动。
+- 支持不同尺寸的卡片，例如 `1 x 1`、`2 x 1`、`2 x 2`。
+- 通过 `SpanSizeLookup` 为不同位置动态指定跨度。
+- 自动填补空白区域，减少布局空洞。
+- 支持跨度缓存，适合复杂尺寸计算场景。
+
+适用场景：
+
+- Android 车机桌面卡片布局。
+- 仪表盘、控制面板、快捷入口区域。
+- 固定网格中的多尺寸卡片展示。
+
 ## Usage
 
-Gradle dependency:
+### Gradle dependency
 
 ```groovy
 dependencies {
-	implementation 'com.arasthel:spannedgridlayoutmanager:3.0.2'
+    implementation 'com.arasthel:spannedgridlayoutmanager:3.0.2'
 }
 ```
 
-When you create a new `SpannedGridLayoutManager` you must provide:
+### Create the layout manager
 
-* An `Orientation`: `Orientation.VERTICAL` or `Orientation.HORIZONTAL`.
-* The **span count** to divide the layout.
+When you create a new `SpannedGridLayoutManager`, provide:
 
-**Kotlin** Example:
+- An `Orientation`: `Orientation.VERTICAL` or `Orientation.HORIZONTAL`.
+- The span count used to divide each row or column.
+
+**Kotlin**
 
 ```kotlin
-val spannedGridLayoutManager = SpannedGridLayoutManager(
-                orientation = SpannedGridLayoutManager.Orientation.VERTICAL, 
-                spans = 4)
+val layoutManager = SpannedGridLayoutManager(
+    orientation = SpannedGridLayoutManager.Orientation.VERTICAL,
+    spans = 4
+)
+recyclerView.layoutManager = layoutManager
 ```
 
-**Java** Example:
+**Java**
 
 ```java
-SpannedGridLayoutManager spannedGridLayoutManager = new SpannedGridLayoutManager(
-			SpannedGridLayoutManager.Orientation.VERTICAL, 4);
+SpannedGridLayoutManager layoutManager = new SpannedGridLayoutManager(
+        SpannedGridLayoutManager.Orientation.VERTICAL,
+        4
+);
+recyclerView.setLayoutManager(layoutManager);
 ```
 
+### Set card sizes
 
-To set the `SpanSize` for each view, you need to use `SpannedGridLayoutManager.SpanSizeLookup`. This class has a lambda that receives an adapter position and must return an `SpanSize`:
+Use `SpannedGridLayoutManager.SpanSizeLookup` to return a `SpanSize` for each adapter position.
 
-**Kotlin:**
+**Kotlin**
 
 ```kotlin
-spannedGridLayoutManager.spanSizeLookup = SpannedGridLayoutManager.SpanSizeLookUp { position -> 
-    SpanSize(2, 2)
+layoutManager.spanSizeLookup = SpannedGridLayoutManager.SpanSizeLookup { position ->
+    when (position) {
+        0 -> SpanSize(2, 2)
+        1 -> SpanSize(2, 1)
+        else -> SpanSize(1, 1)
+    }
 }
-recyclerview.layoutManager = spannedGridLayoutManager
 ```
 
-**Java:**
-
-```java
-// If your project has Java 8 support for lambdas
-spannedGridLayoutManager.setSpanSizeLookup(new SpannedGridLayoutManager.SpanSizeLookup({ position ->
-    new SpanSize(2, 2);
-}));
-
-// If your project uses Java 6 or 7. Yup, it's ugly as hell
-spannedGridLayoutManager.setSpanSizeLookup(new SpannedGridLayoutManager.SpanSizeLookup(new Function1<Integer, SpanSize>(){
-  @Override public SpanSize invoke(Integer position) {
-    return new SpanSize(2, 2);
-  }
-}));
-
-recyclerview.setLayoutManager(spannedGridLayoutManager);
-```
-
-If the logic needed to calculate this values is very complex, they can be cached by setting `spanSizeLookup.usesCache = true` or `spanSizeLookup.setUsesCache(true)`. If you need to invalidate them, just call `spanSizeLookup.invalidateCache()`. 
- 
-### About restoring scroll position:
-
-As this *LayoutManager* may change the order in screen of its items, it has some issues with restoring scroll position when the sizes of the items change drastically. To work around this, restoring the scroll position when recreating this *LayoutManager* is disabled by default.
-
-If you are fairly sure that the position of the items won't change much, you can enable it again using:
+Enable caching when span calculation is expensive:
 
 ```kotlin
-spannedLayoutManager.itemOrderIsStable = true
+layoutManager.spanSizeLookup?.usesCache = true
+layoutManager.spanSizeLookup?.invalidateCache()
 ```
 
-## Migrating from 1.X to 2.X
+### Stable item order
 
-Due to critical layout issues, the API for using SpanSizes had to change. The only changes you should have to do in your code are:
+Scroll restoration is disabled by default when item sizes change significantly. Enable it only when item order remains stable:
 
 ```kotlin
-    val width = 1
-    val height = 2
-
-    // OLD
-    // holder.itemView.layoutParams = RecyclerView.LayoutParams(width, height)
-
-    // NEW
-    holder.itemView.layoutParams = SpanLayoutParams(SpanSize(width, height))
+layoutManager.itemOrderIsStable = true
 ```
-
-Just use the new `SpanLayoutParams` instead of generic `RecyclerView.LayoutParams`.
-
-## Migrating from 2.X to 3.X
-
-Sadly, due to more limitations of the initial design and bugs, most of the LayoutManager's layouting and recycling process had to be re-written. This depended on some breaking API changes since otherwise there would have been lots of unnecessary recycling of views and performance loss when the spans are calculated.
-
-Because of this, while you would set the *SpanSizes* using `SpanLayoutParams`, **these are no longer needed**. You can safely delete those from your adapter.
-
-Instead of that, you must use the `SpannedGridLayoutManager.SpanSizeLookup` like you would do with a `GridLayoutManager`. You can find more info on the [Usage section](#usage). 
 
 ## Animations
 
-To have animations as shown in the sample, you must:
+To enable layout animations similar to the sample:
 
-* Use `setHasStableIds(true)` in your adapter.
-* Override `getItemId` method to return a stable id - that is, it won't change for the same position.
-* Use `adapter.notifyDatasetChanged()` to trigger the layout process.
+- Call `setHasStableIds(true)` in the adapter.
+- Override `getItemId()` and return a stable ID.
+- Call `adapter.notifyDataSetChanged()` to trigger relayout.
 
 ## Implementation details
 
-This library uses `Rects` to find the empty gaps and choose where a view will be placed. The underlying algorithm is explained in [this paper](free_space_algorithm.pdf).
+This library uses free-space `Rect` areas to locate empty gaps and choose where each item should be placed. The algorithm is described in [free_space_algorithm.pdf](free_space_algorithm.pdf).
 
-* Initially, there will be **1** free-space **Rect** `(0, 0, spanCount, Int.MAX_VALUE)` for `Orientation.VERTICAL` or `(0, 0, Int.MAX_VALUE, spanCount)` for `Orientation.HORIZONTAL`. 
-* When a view must added, it will search for the free rects that are **adjacent** to the view's `Rect` or that intersects it.
-* It will iterate over these rects looking for those that are adjacent to the view **and don't contain it**, which will be stored. If a rect doesn't match this criteria, it will be **removed** from the list of free rects and divided in **4 possible sub-rects** - left, top, right, bottom - like this:
+The core implementation is located at:
 
-![Sub rects](art/sub_rects.png)
-
-* For each of that subrects, if none of the previously stored **adjacent** free rects and none of the rects in the list of free rects intersects with it, it will be added to this list as a valid free rect.
-
-You can see this code in `SpannedGridLayoutManager`'s `subtract(Rect)` method.
-
-In version 3.0 however, to ensure no layout issues happened, the whole rects are pre-calculated and cached on every relayout of the whole LayoutManager. These are some elapsed time results that I got from testing:
-
+```text
+spannedgridlayoutmanager/src/main/java/com/arasthel/spannedgridlayoutmanager/
 ```
-Android emulator: 
-    - 500 items: 10ms
-    - 1000 items: 18ms
-    - 10000 items: 35ms
-    - 50000 items: 128ms
-    
-OnePlus 3T:
-    - 500 items: 12ms
-    - 1000 items: 20ms
-    - 10000 items: 135ms
-    - 50000 items: 530ms
-    
-OnePlus 6T:
-    - 500 items: 5ms
-    - 1000 items: 10ms
-    - 10000 items: 55ms
-    - 50000 items: 200ms
-``` 
 
-They aren't that bad, but they're also not great for huge amounts of items and could cause performance issues if you have infinite scrolling. I will try to improve this and calculate rects by batches, although this might not give exact results in the placement of the views.
+## Notes
 
-## License - MIT
+- The repository uses the legacy Android support library namespace. Migrating to AndroidX may be necessary for newer Android projects.
+- Automatic gap filling can change visual order. Do not use this behavior when strict adapter-order rendering is required.
+- For very large data sets, benchmark relayout performance before using it in production.
 
-```
-MIT License
+## License
+
+MIT License.
 
 Copyright © 2017 Jorge Martín Espinosa
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
